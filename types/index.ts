@@ -40,6 +40,19 @@ export type Catch = {
   caught_at: string
 }
 
+export type SpotFeature = {
+  id: string
+  spot_id: string
+  user_id: string
+  type: 'hestehul' | 'revle' | 'prel' | 'aaudlob' | 'andet'
+  lat: number
+  lng: number
+  note: string | null
+  date_found: string
+  active: boolean
+  created_at: string
+}
+
 export type ShoppingItem = {
   id: string
   name: string

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/utils/supabase/client'
-import type { Spot } from '@/types'
+import type { Spot, SpotFeature } from '@/types'
 
 const Map = dynamic(() => import('@/components/Map'), {
   ssr: false,
@@ -16,21 +16,26 @@ const Map = dynamic(() => import('@/components/Map'), {
 
 export default function KortPage() {
   const [spots, setSpots] = useState<Spot[] | null>(null)
+  const [features, setFeatures] = useState<SpotFeature[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
-    supabase
-      .from('spots')
-      .select('*')
-      .order('sort_order', { ascending: true })
-      .then(({ data, error: dbError }) => {
-        if (dbError) {
-          setError(dbError.message)
-          return
-        }
-        setSpots((data ?? []) as Spot[])
-      })
+    Promise.all([
+      supabase.from('spots').select('*').order('sort_order', { ascending: true }),
+      supabase.from('spot_features').select('*').eq('active', true),
+    ]).then(([spotsRes, featuresRes]) => {
+      if (spotsRes.error) {
+        setError(spotsRes.error.message)
+        return
+      }
+      setSpots((spotsRes.data ?? []) as Spot[])
+      // spot_features table may not exist yet (migration 002 must be run);
+      // failures here are non-fatal — just render the map without features.
+      if (!featuresRes.error) {
+        setFeatures((featuresRes.data ?? []) as SpotFeature[])
+      }
+    })
   }, [])
 
   return (
@@ -44,7 +49,7 @@ export default function KortPage() {
           Indlæser kort...
         </div>
       ) : (
-        <Map spots={spots} center={[55.69, 8.16]} zoom={11} />
+        <Map spots={spots} features={features} center={[55.69, 8.16]} zoom={11} />
       )}
     </div>
   )
