@@ -88,10 +88,10 @@ function findNearestSpot(spots: Spot[], lat: number, lng: number): Spot | null {
   return best
 }
 
-function injectPulseCSS() {
-  if (document.getElementById('gps-pulse-styles')) return
+function injectMapCSS() {
+  if (document.getElementById('pighvar-map-styles')) return
   const style = document.createElement('style')
-  style.id = 'gps-pulse-styles'
+  style.id = 'pighvar-map-styles'
   style.textContent = `
     @keyframes gps-pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
@@ -101,6 +101,31 @@ function injectPulseCSS() {
       animation: gps-pulse 2s infinite;
       transform-origin: center;
       transform-box: fill-box;
+    }
+    .lyr-panel-toggle { display: none; }
+    @media (max-width: 768px) {
+      .lyr-panel-body { display: none; }
+      .lyr-panel-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #fff;
+        color: #1A1A18;
+        font-family: Inter, system-ui, sans-serif;
+        font-size: 13px;
+        font-weight: 500;
+        padding: 10px 12px;
+        border: 1px solid #E0DDD6;
+        border-radius: 6px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        cursor: pointer;
+      }
+      .lyr-panel.open .lyr-panel-body { display: block; }
+      .lyr-panel.open .lyr-panel-toggle { display: none; }
+      .pv-add-btn {
+        padding: 12px 16px !important;
+        font-size: 14px !important;
+      }
     }
   `
   document.head.appendChild(style)
@@ -202,19 +227,26 @@ function buildLayerPanel(handlers: {
   onFeatures: (on: boolean) => void
 }): HTMLDivElement {
   const div = L.DomUtil.create('div')
-  div.style.cssText =
-    'background:#fff;padding:8px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;border:1px solid #E0DDD6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:140px;'
+  div.className = 'lyr-panel'
   div.innerHTML = `
-    <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Kort</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-vejkort" style="cursor:pointer;"> Vejkort</label>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-sokort" checked style="cursor:pointer;"> Søkort</label>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-luftfoto" style="cursor:pointer;"> Luftfoto</label>
-    <div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>
-    <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Lag</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-bathy" style="cursor:pointer;"> Dybdekort</label>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-seabed" checked style="cursor:pointer;"> Bundtype</label>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#1A1A18;"><input type="checkbox" id="lyr-features" checked style="cursor:pointer;"> Hestehuller</label>
+    <button class="lyr-panel-toggle" type="button" aria-label="Vis kortlag">▦ Lag</button>
+    <div class="lyr-panel-body" style="position:relative;background:#fff;padding:8px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;border:1px solid #E0DDD6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:140px;">
+      <button class="lyr-panel-close" type="button" aria-label="Luk" style="position:absolute;top:2px;right:4px;background:none;border:none;color:#8A8A82;font-size:16px;line-height:1;cursor:pointer;padding:2px 4px;">×</button>
+      <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Kort</div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-vejkort" style="cursor:pointer;"> Vejkort</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-sokort" style="cursor:pointer;"> Søkort</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-luftfoto" checked style="cursor:pointer;"> Luftfoto</label>
+      <div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>
+      <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Lag</div>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-bathy" checked style="cursor:pointer;"> Dybdekort</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-seabed" checked style="cursor:pointer;"> Bundtype</label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#1A1A18;"><input type="checkbox" id="lyr-features" checked style="cursor:pointer;"> Hestehuller</label>
+    </div>
   `
+  const toggleBtn = div.querySelector<HTMLButtonElement>('.lyr-panel-toggle')
+  const closeBtn = div.querySelector<HTMLButtonElement>('.lyr-panel-close')
+  toggleBtn?.addEventListener('click', () => div.classList.add('open'))
+  closeBtn?.addEventListener('click', () => div.classList.remove('open'))
   L.DomEvent.disableClickPropagation(div)
   L.DomEvent.disableScrollPropagation(div)
 
@@ -262,7 +294,11 @@ export default function Map({
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
-    injectPulseCSS()
+    injectMapCSS()
+    const isMobile =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(max-width: 768px)').matches
+    const spotRadius = isMobile ? 12 : 8
 
     const map = L.map(containerRef.current).setView(center, zoom)
     mapRef.current = map
@@ -310,11 +346,13 @@ export default function Map({
       console.warn('[map] EMODnet bathymetry tile error', e),
     )
 
-    // Default base: Søkort — OpenSeaMap seamark tiles + BSH depth WMS, paired
-    // with the Bundtype overlay below for the ideal pighvar-hunting view.
-    // Vejkort and Luftfoto are alternative bases switchable from the panel.
-    seamarkLayer.addTo(map)
-    depthWmsLayer.addTo(map)
+    // Default base: Luftfoto (Esri World Imagery) — paired with Dybdekort +
+    // Bundtype overlays, the combination that surfaces both the visual shape
+    // of banks/breakers and the seabed substrate underneath. All three
+    // overlays are pre-enabled below so the map lands directly in
+    // pighvar-hunting view.
+    esriImageryLayer.addTo(map)
+    bathymetryLayer.addTo(map)
 
     const seabedLayer = L.tileLayer.wms(EMODNET_SEABED_URL, {
       layers: EMODNET_SEABED_LAYER,
@@ -343,7 +381,7 @@ export default function Map({
 
     spots.forEach((spot) => {
       L.circleMarker([spot.lat, spot.lng], {
-        radius: 8,
+        radius: spotRadius,
         fillColor: '#1A5A8A',
         color: '#ffffff',
         weight: 2,
@@ -419,6 +457,7 @@ export default function Map({
     const AddFeatureControl = L.Control.extend({
       onAdd: () => {
         const btn = L.DomUtil.create('div') as HTMLDivElement
+        btn.className = 'pv-add-btn'
         btn.style.cssText =
           'background:#fff;color:#1A1A18;padding:6px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;font-weight:500;border:1px solid #E0DDD6;border-radius:6px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.08);user-select:none;'
         btn.textContent = '＋ Tilføj feature'
@@ -484,7 +523,7 @@ export default function Map({
     // colour key. Both off → control hides itself so it doesn't obscure the
     // bottom-left corner of the map.
     let bundtypeOn = true
-    let dybdekortOn = false
+    let dybdekortOn = true
     let legendEl: HTMLDivElement | null = null
 
     const swatch = (color: string, label: string) =>

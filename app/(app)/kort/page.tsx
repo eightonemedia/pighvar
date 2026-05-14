@@ -74,7 +74,7 @@ export default function KortPage() {
           fishabilityScore={fishabilityScore}
           currentUser={currentUser}
           center={[55.69, 8.16]}
-          zoom={11}
+          zoom={13}
         />
       )}
     </div>
