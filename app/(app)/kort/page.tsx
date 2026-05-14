@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/utils/supabase/client'
-import type { Spot, SpotFeature } from '@/types'
+import type { FishabilityScore, Spot, SpotFeature } from '@/types'
 
 const Map = dynamic(() => import('@/components/Map'), {
   ssr: false,
@@ -14,17 +14,33 @@ const Map = dynamic(() => import('@/components/Map'), {
   ),
 })
 
+type LocalUser = { id: string; name: string }
+
 export default function KortPage() {
   const [spots, setSpots] = useState<Spot[] | null>(null)
   const [features, setFeatures] = useState<SpotFeature[]>([])
+  const [fishabilityScore, setFishabilityScore] = useState<number | null>(null)
+  const [currentUser, setCurrentUser] = useState<LocalUser | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    const stored = localStorage.getItem('pighvar_user')
+    if (stored) {
+      try {
+        setCurrentUser(JSON.parse(stored) as LocalUser)
+      } catch {
+        // The (app) layout already handles malformed user state.
+      }
+    }
+
     const supabase = createClient()
     Promise.all([
       supabase.from('spots').select('*').order('sort_order', { ascending: true }),
       supabase.from('spot_features').select('*').eq('active', true),
-    ]).then(([spotsRes, featuresRes]) => {
+      fetch('/api/fishability')
+        .then((r) => (r.ok ? (r.json() as Promise<FishabilityScore>) : null))
+        .catch(() => null),
+    ]).then(([spotsRes, featuresRes, fishRes]) => {
       if (spotsRes.error) {
         setError(spotsRes.error.message)
         return
@@ -34,6 +50,9 @@ export default function KortPage() {
       // failures here are non-fatal — just render the map without features.
       if (!featuresRes.error) {
         setFeatures((featuresRes.data ?? []) as SpotFeature[])
+      }
+      if (fishRes && typeof fishRes.score === 'number') {
+        setFishabilityScore(fishRes.score)
       }
     })
   }, [])
@@ -49,7 +68,14 @@ export default function KortPage() {
           Indlæser kort...
         </div>
       ) : (
-        <Map spots={spots} features={features} center={[55.69, 8.16]} zoom={11} />
+        <Map
+          spots={spots}
+          features={features}
+          fishabilityScore={fishabilityScore}
+          currentUser={currentUser}
+          center={[55.69, 8.16]}
+          zoom={11}
+        />
       )}
     </div>
   )
