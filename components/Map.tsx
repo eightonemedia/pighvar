@@ -31,8 +31,13 @@ const FREDNING_HENNE: [number, number][] = [
   [55.6267, 8.12],
 ]
 
-const GEUS_WMS_URL = 'https://wms.dataforsyningen.dk/havmiljoe'
-const GEUS_WMS_LAYER = 'dgu:HBBE_2020'
+// EMODnet open data, no auth. The gtk geoserver has continental coverage;
+// the geus geoserver carries Danish-specific seabed layers if gtk turns up
+// blank over our stretch — swap the URL/LAYER constants to fall back.
+const EMODNET_SEABED_URL = 'https://drive.emodnet-geology.eu/geoserver/gtk/wms'
+const EMODNET_SEABED_LAYER = 'seabed_substrate_250k'
+const EMODNET_BATHY_URL = 'https://ows.emodnet-bathymetry.eu/wms'
+const EMODNET_BATHY_LAYER = 'emodnet:mean_rainbowcolour'
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
@@ -190,8 +195,8 @@ function buildAddFeatureForm(
 
 function buildLayerPanel(handlers: {
   onBaseChange: (mode: 'vejkort' | 'sokort') => void
-  onDepths: (on: boolean) => void
-  onGeus: (on: boolean) => void
+  onBathymetry: (on: boolean) => void
+  onSeabed: (on: boolean) => void
   onFeatures: (on: boolean) => void
 }): HTMLDivElement {
   const div = L.DomUtil.create('div')
@@ -203,8 +208,8 @@ function buildLayerPanel(handlers: {
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-sokort" style="cursor:pointer;"> Søkort</label>
     <div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>
     <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Lag</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-depths" style="cursor:pointer;"> Dybder</label>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-geus" checked style="cursor:pointer;"> Bundtype</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-bathy" style="cursor:pointer;"> Dybdekort</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-seabed" checked style="cursor:pointer;"> Bundtype</label>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#1A1A18;"><input type="checkbox" id="lyr-features" checked style="cursor:pointer;"> Hestehuller</label>
   `
   L.DomEvent.disableClickPropagation(div)
@@ -220,14 +225,14 @@ function buildLayerPanel(handlers: {
   })
 
   div
-    .querySelector<HTMLInputElement>('#lyr-depths')!
+    .querySelector<HTMLInputElement>('#lyr-bathy')!
     .addEventListener('change', (e) =>
-      handlers.onDepths((e.target as HTMLInputElement).checked),
+      handlers.onBathymetry((e.target as HTMLInputElement).checked),
     )
   div
-    .querySelector<HTMLInputElement>('#lyr-geus')!
+    .querySelector<HTMLInputElement>('#lyr-seabed')!
     .addEventListener('change', (e) =>
-      handlers.onGeus((e.target as HTMLInputElement).checked),
+      handlers.onSeabed((e.target as HTMLInputElement).checked),
     )
   div
     .querySelector<HTMLInputElement>('#lyr-features')!
@@ -279,27 +284,34 @@ export default function Map({
         attribution: '© BSH GeoSeaPortal',
       },
     )
-    const depthSoundingsLayer = L.tileLayer(
-      'https://tiles.openseamap.org/depth/{z}/{x}/{y}.png',
-      {
-        attribution: '© OpenSeaMap depth',
-        maxZoom: 18,
-      },
+    const bathymetryLayer = L.tileLayer.wms(EMODNET_BATHY_URL, {
+      layers: EMODNET_BATHY_LAYER,
+      format: 'image/png',
+      transparent: true,
+      opacity: 0.5,
+      version: '1.3.0',
+      attribution: '© EMODnet Bathymetry',
+    })
+    bathymetryLayer.on('tileerror', (e) =>
+      console.warn('[map] EMODnet bathymetry tile error', e),
     )
 
     // Default base: Vejkort. Søkort hides OSM and overlays nautical chart +
-    // depth WMS. Dybder is an independent overlay that can be toggled in
-    // either base mode.
+    // depth WMS. Dybdekort/Bundtype/Hestehuller are independent overlays.
     osmLayer.addTo(map)
 
-    const geusLayer = L.tileLayer.wms(GEUS_WMS_URL, {
-      layers: GEUS_WMS_LAYER,
+    const seabedLayer = L.tileLayer.wms(EMODNET_SEABED_URL, {
+      layers: EMODNET_SEABED_LAYER,
       format: 'image/png',
       transparent: true,
-      opacity: 0.45,
-      attribution: '© GEUS Havmiljø',
+      opacity: 0.5,
+      version: '1.3.0',
+      attribution: '© EMODnet Geology',
     })
-    geusLayer.addTo(map)
+    seabedLayer.on('tileerror', (e) =>
+      console.warn('[map] EMODnet seabed tile error', e),
+    )
+    seabedLayer.addTo(map)
 
     L.polygon(FREDNING_HENNE, {
       color: '#b91c1c',
@@ -466,12 +478,12 @@ export default function Map({
               depthWmsLayer.addTo(map)
             }
           },
-          onDepths: (on) =>
+          onBathymetry: (on) =>
             on
-              ? depthSoundingsLayer.addTo(map)
-              : map.removeLayer(depthSoundingsLayer),
-          onGeus: (on) =>
-            on ? geusLayer.addTo(map) : map.removeLayer(geusLayer),
+              ? bathymetryLayer.addTo(map)
+              : map.removeLayer(bathymetryLayer),
+          onSeabed: (on) =>
+            on ? seabedLayer.addTo(map) : map.removeLayer(seabedLayer),
           onFeatures: (on) =>
             on ? featuresGroup.addTo(map) : map.removeLayer(featuresGroup),
         }),
