@@ -31,8 +31,8 @@ const FREDNING_HENNE: [number, number][] = [
   [55.6267, 8.12],
 ]
 
-const GEUS_WMS_URL = 'https://wms.geus.dk/geoserver/havmiljoe/ows'
-const GEUS_WMS_LAYER = 'havmiljoe:HBBE_2021'
+const GEUS_WMS_URL = 'https://wms.dataforsyningen.dk/havmiljoe'
+const GEUS_WMS_LAYER = 'dgu:HBBE_2020'
 
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
@@ -258,8 +258,8 @@ export default function Map({
       layers: GEUS_WMS_LAYER,
       format: 'image/png',
       transparent: true,
-      opacity: 0.4,
-      attribution: 'GEUS havmiljø',
+      opacity: 0.45,
+      attribution: '© GEUS Havmiljø',
     })
     geusLayer.addTo(map)
 
@@ -331,8 +331,47 @@ export default function Map({
       )
     }
 
+    let addMode = false
+    let addButtonEl: HTMLDivElement | null = null
+
+    const setAddMode = (on: boolean) => {
+      addMode = on && currentUser !== null
+      if (addButtonEl) {
+        if (addMode) {
+          addButtonEl.style.background = '#1A5A8A'
+          addButtonEl.style.color = '#fff'
+          addButtonEl.style.borderColor = '#1A5A8A'
+        } else {
+          addButtonEl.style.background = '#fff'
+          addButtonEl.style.color = '#1A1A18'
+          addButtonEl.style.borderColor = '#E0DDD6'
+        }
+      }
+      map.getContainer().style.cursor = addMode ? 'crosshair' : ''
+    }
+
+    const AddFeatureControl = L.Control.extend({
+      onAdd: () => {
+        const btn = L.DomUtil.create('div') as HTMLDivElement
+        btn.style.cssText =
+          'background:#fff;color:#1A1A18;padding:6px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;font-weight:500;border:1px solid #E0DDD6;border-radius:6px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.08);user-select:none;'
+        btn.textContent = '＋ Tilføj feature'
+        btn.title = currentUser
+          ? 'Slå tilstand til og klik på kortet'
+          : 'Log ind for at tilføje'
+        L.DomEvent.disableClickPropagation(btn)
+        btn.addEventListener('click', () => {
+          if (!currentUser) return
+          setAddMode(!addMode)
+        })
+        addButtonEl = btn
+        return btn
+      },
+    })
+    new AddFeatureControl({ position: 'topleft' }).addTo(map)
+
     map.on('click', (e: L.LeafletMouseEvent) => {
-      if (!currentUser) return
+      if (!addMode || !currentUser) return
       const { lat, lng } = e.latlng
 
       const popup = L.popup({ closeButton: true, autoClose: true })
@@ -357,6 +396,7 @@ export default function Map({
           if (error || !data) {
             console.error('[map] insert feature failed', error)
             map.closePopup(popup)
+            setAddMode(false)
             return
           }
           const newFeature = data as SpotFeature
@@ -364,8 +404,12 @@ export default function Map({
             .bindPopup(featurePopupHtml(newFeature))
             .addTo(featuresGroup)
           map.closePopup(popup)
+          setAddMode(false)
         },
-        () => map.closePopup(popup),
+        () => {
+          map.closePopup(popup)
+          setAddMode(false)
+        },
       )
       popup.setLatLng(e.latlng).setContent(form).openOn(map)
     })
