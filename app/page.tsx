@@ -1,17 +1,15 @@
-import { createClient } from '@/utils/supabase/server'
-import { cookies } from 'next/headers'
+'use client'
 
-export default async function Page() {
-  const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
-  const { data: todos } = await supabase.from('todos').select()
+export default function Home() {
+  const router = useRouter()
 
-  return (
-    <ul>
-      {todos?.map((todo) => (
-        <li key={todo.id}>{todo.name}</li>
-      ))}
-    </ul>
-  )
+  useEffect(() => {
+    const stored = localStorage.getItem('pighvar_user')
+    router.push(stored ? '/dashboard' : '/login')
+  }, [router])
+
+  return null
 }
