@@ -51,22 +51,41 @@ export default function LogPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    let cancelled = false
     const supabase = createClient()
-    supabase
-      .from('catches')
-      .select(
-        `*,
-         trips ( id, weather_snapshot, spots ( name ) ),
-         users ( name )`,
-      )
-      .order('caught_at', { ascending: false })
-      .then(({ data, error: dbErr }) => {
+    // Explicit FK hints (users:user_id, trips:trip_id, spots:spot_id) so
+    // PostgREST always resolves to the catches-side relationships rather
+    // than guessing — keeps the query working across PostgREST versions.
+    ;(async () => {
+      try {
+        const { data, error: dbErr } = await supabase
+          .from('catches')
+          .select(
+            `id, trip_id, user_id, species, length_cm, weight_g, lat, lng, photo_url, bait, caught_at,
+             trips:trip_id ( id, weather_snapshot, spots:spot_id ( name ) ),
+             users:user_id ( name )`,
+          )
+          .order('caught_at', { ascending: false })
+        if (cancelled) return
         if (dbErr) {
-          setError(dbErr.message)
+          console.error('[log] supabase error', dbErr)
+          setError(dbErr.message || 'Ukendt fejl ved hentning af fangster')
           return
         }
         setRows((data ?? []) as unknown as CatchRow[])
-      })
+      } catch (err) {
+        if (cancelled) return
+        console.error('[log] load failed', err)
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Kunne ikke hente fangster',
+        )
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const stats = useMemo(() => {

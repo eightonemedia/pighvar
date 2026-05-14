@@ -86,58 +86,78 @@ export default function TurPage() {
   const [cBait, setCBait] = useState<(typeof BAITS)[number]>('Tobis (hel)')
 
   useEffect(() => {
-    const stored = localStorage.getItem('pighvar_user')
-    if (stored) {
-      try {
+    try {
+      const stored = window.localStorage.getItem('pighvar_user')
+      if (stored) {
         setUser(JSON.parse(stored) as LocalUser)
-      } catch {
-        // layout handles malformed user
       }
+    } catch (err) {
+      console.warn('[tur] could not read pighvar_user from localStorage', err)
     }
   }, [])
 
   // Initial load: spots + fishability + resume any open trip
   useEffect(() => {
     if (!user) return
+    let cancelled = false
     const supabase = createClient()
-    Promise.all([
-      supabase
-        .from('spots')
-        .select('*')
-        .order('sort_order', { ascending: true }),
-      fetch('/api/fishability')
-        .then((r) => (r.ok ? (r.json() as Promise<FishabilityScore>) : null))
-        .catch(() => null),
-      supabase
-        .from('trips')
-        .select('*')
-        .eq('user_id', user.id)
-        .is('ended_at', null)
-        .order('started_at', { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]).then(async ([spotsRes, fishRes, openTripRes]) => {
-      if (!spotsRes.error) {
-        const list = (spotsRes.data ?? []) as Spot[]
-        setSpots(list)
-        if (list.length > 0) setSelectedSpotId(list[0].id)
+    ;(async () => {
+      try {
+        const [spotsRes, fishRes, openTripRes] = await Promise.all([
+          supabase
+            .from('spots')
+            .select('*')
+            .order('sort_order', { ascending: true }),
+          fetch('/api/fishability')
+            .then((r) => (r.ok ? (r.json() as Promise<FishabilityScore>) : null))
+            .catch(() => null),
+          supabase
+            .from('trips')
+            .select('*')
+            .eq('user_id', user.id)
+            .is('ended_at', null)
+            .order('started_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+        ])
+        if (cancelled) return
+
+        if (spotsRes.error) {
+          setError(`Spots: ${spotsRes.error.message}`)
+        } else {
+          const list = (spotsRes.data ?? []) as Spot[]
+          setSpots(list)
+          if (list.length > 0) setSelectedSpotId(list[0].id)
+        }
+        if (fishRes) setFishability(fishRes)
+        if (openTripRes.error) {
+          setError(`Åben tur: ${openTripRes.error.message}`)
+        } else if (openTripRes.data) {
+          const open = openTripRes.data as Trip
+          setTrip(open)
+          setMode('active')
+          const cRes = await supabase
+            .from('catches')
+            .select('*')
+            .eq('trip_id', open.id)
+            .order('caught_at', { ascending: true })
+          if (!cancelled && !cRes.error) {
+            setCatches((cRes.data ?? []) as Catch[])
+          }
+          if (open.distance_m) setDistance(open.distance_m)
+          if (open.spot_id) setSelectedSpotId(open.spot_id)
+        }
+      } catch (err) {
+        if (cancelled) return
+        console.error('[tur] initial load failed', err)
+        setError(
+          err instanceof Error ? err.message : 'Kunne ikke hente data',
+        )
       }
-      if (fishRes) setFishability(fishRes)
-      if (!openTripRes.error && openTripRes.data) {
-        const open = openTripRes.data as Trip
-        setTrip(open)
-        setMode('active')
-        // Re-fetch catches for this trip
-        const cRes = await supabase
-          .from('catches')
-          .select('*')
-          .eq('trip_id', open.id)
-          .order('caught_at', { ascending: true })
-        if (!cRes.error) setCatches((cRes.data ?? []) as Catch[])
-        if (open.distance_m) setDistance(open.distance_m)
-        if (open.spot_id) setSelectedSpotId(open.spot_id)
-      }
-    })
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [user])
 
   // Timer tick while active
