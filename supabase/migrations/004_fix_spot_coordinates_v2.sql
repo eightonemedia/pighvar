@@ -1,0 +1,9 @@
+update public.spots set lat = 55.5568, lng = 8.0756 where name = 'Blåvand';
+update public.spots set lat = 55.6067, lng = 8.1089 where name = 'Grærup';
+update public.spots set lat = 55.6444, lng = 8.1133 where name = 'Henne';
+update public.spots set lat = 55.6756, lng = 8.1311 where name = 'Børsmose';
+update public.spots set lat = 55.6911, lng = 8.1333 where name = 'Vejers';
+update public.spots set lat = 55.7200, lng = 8.1467 where name = 'Houstrup';
+update public.spots set lat = 55.8067, lng = 8.1756 where name = 'Nymindegab';
+update public.spots set lat = 55.9067, lng = 8.2022 where name = 'Lyngvig';
+update public.spots set lat = 56.0111, lng = 8.2089 where name = 'Søndervig';
