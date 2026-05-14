@@ -77,6 +77,7 @@ export type TideEvent = {
   time: string
   height: number
   type: 'high' | 'low'
+  projected?: boolean
 }
 
 export type FishabilityScore = {

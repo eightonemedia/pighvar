@@ -107,6 +107,87 @@ function collapsePlateaus(events: TideEvent[]): TideEvent[] {
   return out
 }
 
+// Project tide events forward using the M2 lunar period (12h 25min). DMI
+// oceanObs only returns observations, so without this every event in the
+// API response is already in the past. We anchor on the most recent
+// observed high (and low if present) and extrapolate at the period derived
+// from the last two highs — falling back to the M2 default when the
+// observed gap is too noisy to trust.
+export function projectTideEvents(
+  observed: TideEvent[],
+  horizonMs: number = 48 * 60 * 60 * 1000,
+  nowMs: number = Date.now(),
+): TideEvent[] {
+  const M2_MIN = 745
+  const sorted = [...observed].sort((a, b) => a.time.localeCompare(b.time))
+  const highs = sorted.filter((e) => e.type === 'high')
+  const lows = sorted.filter((e) => e.type === 'low')
+
+  if (highs.length === 0) return sorted
+
+  let periodMin = M2_MIN
+  if (highs.length >= 2) {
+    const a = highs[highs.length - 2]
+    const b = highs[highs.length - 1]
+    const dt = (Date.parse(b.time) - Date.parse(a.time)) / 60000
+    if (dt > 600 && dt < 900) periodMin = dt
+  }
+  const halfPeriodMin = periodMin / 2
+
+  const lastHigh = highs[highs.length - 1]
+  const lastLow = lows.length > 0 ? lows[lows.length - 1] : null
+
+  const highHeight =
+    highs.length >= 2
+      ? (highs[highs.length - 1].height + highs[highs.length - 2].height) / 2
+      : lastHigh.height
+  const lowHeight =
+    lows.length >= 2
+      ? (lows[lows.length - 1].height + lows[lows.length - 2].height) / 2
+      : (lastLow?.height ?? -0.1)
+
+  const cutoff = nowMs + horizonMs
+  const periodMs = periodMin * 60000
+  const halfPeriodMs = halfPeriodMin * 60000
+  const projected: TideEvent[] = []
+
+  for (
+    let t = Date.parse(lastHigh.time) + periodMs;
+    t <= cutoff;
+    t += periodMs
+  ) {
+    projected.push({
+      time: new Date(t).toISOString(),
+      height: highHeight,
+      type: 'high',
+      projected: true,
+    })
+  }
+
+  const lowStart = lastLow
+    ? Date.parse(lastLow.time) + periodMs
+    : Date.parse(lastHigh.time) + halfPeriodMs
+  for (let t = lowStart; t <= cutoff; t += periodMs) {
+    projected.push({
+      time: new Date(t).toISOString(),
+      height: lowHeight,
+      type: 'low',
+      projected: true,
+    })
+  }
+
+  const all = [...sorted, ...projected]
+  const seen = new Set<string>()
+  return all
+    .filter((e) => {
+      const key = `${e.time}|${e.type}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
+    .sort((a, b) => a.time.localeCompare(b.time))
+}
+
 export async function fetchCurrentWaterLevel(): Promise<
   { height: number; trend: 'rising' | 'falling' | 'stable' } | null
 > {

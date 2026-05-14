@@ -1,12 +1,17 @@
 import { NextResponse } from 'next/server'
-import { fetchTideEvents, fetchCurrentWaterLevel } from '@/lib/api/dmi'
+import {
+  fetchCurrentWaterLevel,
+  fetchTideEvents,
+  projectTideEvents,
+} from '@/lib/api/dmi'
 
 export async function GET() {
   try {
-    const [events, current] = await Promise.all([
+    const [observed, current] = await Promise.all([
       fetchTideEvents(2),
       fetchCurrentWaterLevel(),
     ])
+    const events = projectTideEvents(observed)
     return NextResponse.json(
       { events, current },
       {
