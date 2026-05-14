@@ -193,8 +193,10 @@ function buildAddFeatureForm(
   return div
 }
 
+type BaseMode = 'vejkort' | 'sokort' | 'luftfoto'
+
 function buildLayerPanel(handlers: {
-  onBaseChange: (mode: 'vejkort' | 'sokort') => void
+  onBaseChange: (mode: BaseMode) => void
   onBathymetry: (on: boolean) => void
   onSeabed: (on: boolean) => void
   onFeatures: (on: boolean) => void
@@ -204,8 +206,9 @@ function buildLayerPanel(handlers: {
     'background:#fff;padding:8px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;border:1px solid #E0DDD6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:140px;'
   div.innerHTML = `
     <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Kort</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-vejkort" checked style="cursor:pointer;"> Vejkort</label>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-sokort" style="cursor:pointer;"> Søkort</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-vejkort" style="cursor:pointer;"> Vejkort</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-sokort" checked style="cursor:pointer;"> Søkort</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-luftfoto" style="cursor:pointer;"> Luftfoto</label>
     <div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>
     <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Lag</div>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-bathy" style="cursor:pointer;"> Dybdekort</label>
@@ -217,11 +220,15 @@ function buildLayerPanel(handlers: {
 
   const vejkort = div.querySelector<HTMLInputElement>('#base-vejkort')!
   const sokort = div.querySelector<HTMLInputElement>('#base-sokort')!
+  const luftfoto = div.querySelector<HTMLInputElement>('#base-luftfoto')!
   vejkort.addEventListener('change', () => {
     if (vejkort.checked) handlers.onBaseChange('vejkort')
   })
   sokort.addEventListener('change', () => {
     if (sokort.checked) handlers.onBaseChange('sokort')
+  })
+  luftfoto.addEventListener('change', () => {
+    if (luftfoto.checked) handlers.onBaseChange('luftfoto')
   })
 
   div
@@ -284,6 +291,13 @@ export default function Map({
         attribution: '© BSH GeoSeaPortal',
       },
     )
+    const esriImageryLayer = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution: '© Esri World Imagery',
+        maxZoom: 19,
+      },
+    )
     const bathymetryLayer = L.tileLayer.wms(EMODNET_BATHY_URL, {
       layers: EMODNET_BATHY_LAYER,
       format: 'image/png',
@@ -296,9 +310,11 @@ export default function Map({
       console.warn('[map] EMODnet bathymetry tile error', e),
     )
 
-    // Default base: Vejkort. Søkort hides OSM and overlays nautical chart +
-    // depth WMS. Dybdekort/Bundtype/Hestehuller are independent overlays.
-    osmLayer.addTo(map)
+    // Default base: Søkort — OpenSeaMap seamark tiles + BSH depth WMS, paired
+    // with the Bundtype overlay below for the ideal pighvar-hunting view.
+    // Vejkort and Luftfoto are alternative bases switchable from the panel.
+    seamarkLayer.addTo(map)
+    depthWmsLayer.addTo(map)
 
     const seabedLayer = L.tileLayer.wms(EMODNET_SEABED_URL, {
       layers: EMODNET_SEABED_LAYER,
@@ -484,10 +500,10 @@ export default function Map({
       const parts: string[] = []
       if (bundtypeOn) {
         parts.push('<div style="font-weight:600;margin-bottom:3px;">Bundtype</div>')
-        parts.push(swatch('#F2D98F', 'Sand (pighvar-habitat)'))
-        parts.push(swatch('#E89C4E', 'Groft sand / grus'))
-        parts.push(swatch('#9FC9E0', 'Mudder / finsand'))
-        parts.push(swatch('#B0B0B0', 'Ikke kortlagt'))
+        parts.push(swatch('#F2D98F', 'Sand · pighvar habitat'))
+        parts.push(swatch('#B5651D', 'Groft sand · grus'))
+        parts.push(swatch('#9FC9E0', 'Mudder · finsand'))
+        parts.push(swatch('#D8D8D2', 'Ikke kortlagt'))
       }
       if (bundtypeOn && dybdekortOn) {
         parts.push('<div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>')
@@ -518,14 +534,17 @@ export default function Map({
       onAdd: () =>
         buildLayerPanel({
           onBaseChange: (mode) => {
+            map.removeLayer(osmLayer)
+            map.removeLayer(seamarkLayer)
+            map.removeLayer(depthWmsLayer)
+            map.removeLayer(esriImageryLayer)
             if (mode === 'vejkort') {
-              map.removeLayer(seamarkLayer)
-              map.removeLayer(depthWmsLayer)
               osmLayer.addTo(map)
-            } else {
-              map.removeLayer(osmLayer)
+            } else if (mode === 'sokort') {
               seamarkLayer.addTo(map)
               depthWmsLayer.addTo(map)
+            } else {
+              esriImageryLayer.addTo(map)
             }
           },
           onBathymetry: (on) => {
