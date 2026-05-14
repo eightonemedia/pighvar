@@ -189,25 +189,40 @@ function buildAddFeatureForm(
 }
 
 function buildLayerPanel(handlers: {
-  onSeamap: (on: boolean) => void
+  onBaseChange: (mode: 'vejkort' | 'sokort') => void
+  onDepths: (on: boolean) => void
   onGeus: (on: boolean) => void
   onFeatures: (on: boolean) => void
 }): HTMLDivElement {
   const div = L.DomUtil.create('div')
   div.style.cssText =
-    'background:#fff;padding:8px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;border:1px solid #E0DDD6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);'
+    'background:#fff;padding:8px 10px;font-family:Inter,system-ui,sans-serif;font-size:12px;border:1px solid #E0DDD6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:140px;'
   div.innerHTML = `
-    <div style="font-weight:600;color:#1A1A18;margin-bottom:6px;">Lag</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-seamap" checked style="cursor:pointer;"> OpenSeaMap</label>
+    <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Kort</div>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-vejkort" checked style="cursor:pointer;"> Vejkort</label>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="radio" name="basemap" id="base-sokort" style="cursor:pointer;"> Søkort</label>
+    <div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>
+    <div style="font-weight:600;color:#1A1A18;margin-bottom:4px;">Lag</div>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-depths" style="cursor:pointer;"> Dybder</label>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:3px;color:#1A1A18;"><input type="checkbox" id="lyr-geus" checked style="cursor:pointer;"> Bundtype</label>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#1A1A18;"><input type="checkbox" id="lyr-features" checked style="cursor:pointer;"> Hestehuller</label>
   `
   L.DomEvent.disableClickPropagation(div)
   L.DomEvent.disableScrollPropagation(div)
+
+  const vejkort = div.querySelector<HTMLInputElement>('#base-vejkort')!
+  const sokort = div.querySelector<HTMLInputElement>('#base-sokort')!
+  vejkort.addEventListener('change', () => {
+    if (vejkort.checked) handlers.onBaseChange('vejkort')
+  })
+  sokort.addEventListener('change', () => {
+    if (sokort.checked) handlers.onBaseChange('sokort')
+  })
+
   div
-    .querySelector<HTMLInputElement>('#lyr-seamap')!
+    .querySelector<HTMLInputElement>('#lyr-depths')!
     .addEventListener('change', (e) =>
-      handlers.onSeamap((e.target as HTMLInputElement).checked),
+      handlers.onDepths((e.target as HTMLInputElement).checked),
     )
   div
     .querySelector<HTMLInputElement>('#lyr-geus')!
@@ -240,19 +255,42 @@ export default function Map({
     const map = L.map(containerRef.current).setView(center, zoom)
     mapRef.current = map
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
-      maxZoom: 19,
-    }).addTo(map)
-
-    const seamapLayer = L.tileLayer(
+    const osmLayer = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19,
+      },
+    )
+    const seamarkLayer = L.tileLayer(
       'https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',
       {
         attribution: '© OpenSeaMap contributors',
         maxZoom: 19,
       },
     )
-    seamapLayer.addTo(map)
+    const depthWmsLayer = L.tileLayer.wms(
+      'https://www.geoseaportal.de/wss/service/NAUTHIS_Hydrography/guest',
+      {
+        layers: 'NAUTHIS_Hydrography',
+        format: 'image/png',
+        transparent: true,
+        opacity: 0.6,
+        attribution: '© BSH GeoSeaPortal',
+      },
+    )
+    const depthSoundingsLayer = L.tileLayer(
+      'https://tiles.openseamap.org/depth/{z}/{x}/{y}.png',
+      {
+        attribution: '© OpenSeaMap depth',
+        maxZoom: 18,
+      },
+    )
+
+    // Default base: Vejkort. Søkort hides OSM and overlays nautical chart +
+    // depth WMS. Dybder is an independent overlay that can be toggled in
+    // either base mode.
+    osmLayer.addTo(map)
 
     const geusLayer = L.tileLayer.wms(GEUS_WMS_URL, {
       layers: GEUS_WMS_LAYER,
@@ -417,8 +455,21 @@ export default function Map({
     const LayerControl = L.Control.extend({
       onAdd: () =>
         buildLayerPanel({
-          onSeamap: (on) =>
-            on ? seamapLayer.addTo(map) : map.removeLayer(seamapLayer),
+          onBaseChange: (mode) => {
+            if (mode === 'vejkort') {
+              map.removeLayer(seamarkLayer)
+              map.removeLayer(depthWmsLayer)
+              osmLayer.addTo(map)
+            } else {
+              map.removeLayer(osmLayer)
+              seamarkLayer.addTo(map)
+              depthWmsLayer.addTo(map)
+            }
+          },
+          onDepths: (on) =>
+            on
+              ? depthSoundingsLayer.addTo(map)
+              : map.removeLayer(depthSoundingsLayer),
           onGeus: (on) =>
             on ? geusLayer.addTo(map) : map.removeLayer(geusLayer),
           onFeatures: (on) =>
