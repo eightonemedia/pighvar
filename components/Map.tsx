@@ -464,6 +464,56 @@ export default function Map({
       popup.setLatLng(e.latlng).setContent(form).openOn(map)
     })
 
+    // Legend tracks which raster overlays are visible and renders the matching
+    // colour key. Both off → control hides itself so it doesn't obscure the
+    // bottom-left corner of the map.
+    let bundtypeOn = true
+    let dybdekortOn = false
+    let legendEl: HTMLDivElement | null = null
+
+    const swatch = (color: string, label: string) =>
+      `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;"><span style="width:10px;height:10px;background:${color};border:1px solid rgba(0,0,0,0.12);display:inline-block;flex-shrink:0;"></span><span>${label}</span></div>`
+
+    const renderLegend = () => {
+      if (!legendEl) return
+      if (!bundtypeOn && !dybdekortOn) {
+        legendEl.style.display = 'none'
+        return
+      }
+      legendEl.style.display = ''
+      const parts: string[] = []
+      if (bundtypeOn) {
+        parts.push('<div style="font-weight:600;margin-bottom:3px;">Bundtype</div>')
+        parts.push(swatch('#F2D98F', 'Sand (pighvar-habitat)'))
+        parts.push(swatch('#E89C4E', 'Groft sand / grus'))
+        parts.push(swatch('#9FC9E0', 'Mudder / finsand'))
+        parts.push(swatch('#B0B0B0', 'Ikke kortlagt'))
+      }
+      if (bundtypeOn && dybdekortOn) {
+        parts.push('<div style="border-top:1px solid #EFECE7;margin:6px -4px;"></div>')
+      }
+      if (dybdekortOn) {
+        parts.push('<div style="font-weight:600;margin-bottom:3px;">Dybde</div>')
+        parts.push(swatch('#D44A3D', 'Lavt (<5m) — brændingszone'))
+        parts.push(swatch('#E89C4E', 'Middel (5-20m)'))
+        parts.push(swatch('#6B3D8A', 'Dybt (>20m)'))
+      }
+      legendEl.innerHTML = parts.join('')
+    }
+
+    const LegendControl = L.Control.extend({
+      onAdd: () => {
+        const div = L.DomUtil.create('div') as HTMLDivElement
+        div.style.cssText =
+          'background:#fff;padding:8px 10px;font-family:Inter,system-ui,sans-serif;font-size:11px;color:#1A1A18;border:1px solid #E0DDD6;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,0.08);min-width:160px;'
+        L.DomEvent.disableClickPropagation(div)
+        legendEl = div
+        renderLegend()
+        return div
+      },
+    })
+    new LegendControl({ position: 'bottomleft' }).addTo(map)
+
     const LayerControl = L.Control.extend({
       onAdd: () =>
         buildLayerPanel({
@@ -478,12 +528,18 @@ export default function Map({
               depthWmsLayer.addTo(map)
             }
           },
-          onBathymetry: (on) =>
-            on
-              ? bathymetryLayer.addTo(map)
-              : map.removeLayer(bathymetryLayer),
-          onSeabed: (on) =>
-            on ? seabedLayer.addTo(map) : map.removeLayer(seabedLayer),
+          onBathymetry: (on) => {
+            dybdekortOn = on
+            if (on) bathymetryLayer.addTo(map)
+            else map.removeLayer(bathymetryLayer)
+            renderLegend()
+          },
+          onSeabed: (on) => {
+            bundtypeOn = on
+            if (on) seabedLayer.addTo(map)
+            else map.removeLayer(seabedLayer)
+            renderLegend()
+          },
           onFeatures: (on) =>
             on ? featuresGroup.addTo(map) : map.removeLayer(featuresGroup),
         }),
