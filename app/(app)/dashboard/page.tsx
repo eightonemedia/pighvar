@@ -631,16 +631,13 @@ function TideSection({
   loading: boolean
   now: Date
 }) {
-  const upcoming = useMemo(() => {
+  // DMI oceanObs gives observations (past), not a forecast. Show every event
+  // we have in chronological order and mark already-passed rows visually so
+  // the table doesn't claim "no data" when 8 historical events are loaded.
+  const events = useMemo(() => {
     if (!tide?.events) return []
-    const cutoff = now.getTime() + 48 * 3600 * 1000
-    return tide.events
-      .filter((e) => {
-        const t = Date.parse(e.time)
-        return t >= now.getTime() - 3600 * 1000 && t <= cutoff
-      })
-      .sort((a, b) => a.time.localeCompare(b.time))
-  }, [tide, now])
+    return [...tide.events].sort((a, b) => a.time.localeCompare(b.time))
+  }, [tide])
 
   const trendArrow =
     tide?.current?.trend === 'rising'
@@ -678,62 +675,69 @@ function TideSection({
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-8 w-full" />
         </div>
-      ) : upcoming.length === 0 ? (
+      ) : events.length === 0 ? (
         <p className="text-sm text-[#8A8A82]">
           Ingen tidevandsdata tilgængelig.
         </p>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-[#8A8A82] text-xs uppercase tracking-wide">
-              <th className="text-left font-medium py-2">Dag</th>
-              <th className="text-left font-medium py-2">Tidspunkt</th>
-              <th className="text-right font-medium py-2">Vandstand</th>
-              <th className="text-left font-medium py-2 pl-4">Type</th>
-              <th className="text-left font-medium py-2">Fiskevindue</th>
-            </tr>
-          </thead>
-          <tbody>
-            {upcoming.map((e) => {
-              const t = new Date(e.time)
-              const isHigh = e.type === 'high'
-              return (
-                <tr
-                  key={e.time}
-                  className={`border-t border-[#EFECE7] ${
-                    isHigh ? 'bg-[#F4F8FB]' : ''
-                  }`}
-                >
-                  <td className="py-2 text-[#4A4A44]">
-                    {DANISH_DAY_SHORT[t.getDay()]} {t.getDate()}/
-                    {t.getMonth() + 1}
-                  </td>
-                  <td className="py-2 text-[#1A1A18] tabular-nums">
-                    {fmtHM(t)}
-                  </td>
-                  <td className="py-2 text-right text-[#1A1A18] tabular-nums">
-                    {e.height >= 0 ? '+' : ''}
-                    {e.height.toFixed(2)} m
-                  </td>
-                  <td
-                    className={`py-2 pl-4 ${
-                      isHigh
-                        ? 'text-[#1A5A8A] font-medium'
-                        : 'text-[#8A8A82]'
-                    }`}
+        <>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[#8A8A82] text-xs uppercase tracking-wide">
+                <th className="text-left font-medium py-2">Dag</th>
+                <th className="text-left font-medium py-2">Tidspunkt</th>
+                <th className="text-right font-medium py-2">Vandstand</th>
+                <th className="text-left font-medium py-2 pl-4">Type</th>
+                <th className="text-left font-medium py-2">Fiskevindue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {events.map((e) => {
+                const t = new Date(e.time)
+                const isHigh = e.type === 'high'
+                const isPast = t.getTime() < now.getTime()
+                return (
+                  <tr
+                    key={e.time}
+                    className={`border-t border-[#EFECE7] ${
+                      isHigh ? 'bg-[#F4F8FB]' : ''
+                    } ${isPast ? 'opacity-50' : ''}`}
                   >
-                    {isHigh ? 'Højvande' : 'Lavvande'}
-                  </td>
-                  <td className="py-2 text-xs text-[#8A8A82] tabular-nums">
-                    {isHigh
-                      ? `${fmtHM(addMinutes(t, -120))} – ${fmtHM(addMinutes(t, 60))}`
-                      : '—'}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+                    <td className="py-2 text-[#4A4A44]">
+                      {DANISH_DAY_SHORT[t.getDay()]} {t.getDate()}/
+                      {t.getMonth() + 1}
+                    </td>
+                    <td className="py-2 text-[#1A1A18] tabular-nums">
+                      {fmtHM(t)}
+                    </td>
+                    <td className="py-2 text-right text-[#1A1A18] tabular-nums">
+                      {e.height >= 0 ? '+' : ''}
+                      {e.height.toFixed(2)} m
+                    </td>
+                    <td
+                      className={`py-2 pl-4 ${
+                        isHigh
+                          ? 'text-[#1A5A8A] font-medium'
+                          : 'text-[#8A8A82]'
+                      }`}
+                    >
+                      {isHigh ? 'Højvande' : 'Lavvande'}
+                    </td>
+                    <td className="py-2 text-xs text-[#8A8A82] tabular-nums">
+                      {isHigh
+                        ? `${fmtHM(addMinutes(t, -120))} – ${fmtHM(addMinutes(t, 60))}`
+                        : '—'}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <p className="text-[11px] text-[#8A8A82] mt-3">
+            Kilde: DMI oceanObs · observationer fra Esbjerg Havn I. Prognose
+            kommer senere — dæmpede rækker er allerede passeret.
+          </p>
+        </>
       )}
     </Card>
   )
@@ -749,21 +753,41 @@ function BestSpotCard({
   const windStatus = statusForWind(weather?.wind_speed, weather?.wind_dir)
   const waveStatus = statusForWave(weather?.wave_height)
   const tempStatus = statusForTemp(weather?.water_temp)
+  const score = fishability?.score ?? 0
+
+  const config =
+    score >= 7
+      ? {
+          border: 'border-[#1F8A4C] border-2',
+          headline: 'Bedste spot: Nymindegab',
+          subtitle: 'Fjordudløb · kraftig strøm',
+        }
+      : score >= 4
+        ? {
+            border: 'border-[#B5811C] border-2',
+            headline: 'Acceptabelt — vælg med omhu',
+            subtitle: 'Tjek vinden mod den specifikke spot',
+          }
+        : {
+            border: 'border-[#B33C2A] border-2',
+            headline: 'Dårlige forhold — overvej at vente',
+            subtitle: 'Indeks er kritisk lavt lige nu',
+          }
 
   return (
-    <Card className="p-6">
+    <Card className={`p-6 ${config.border}`}>
       <h2 className="text-sm font-medium uppercase tracking-wide text-[#4A4A44]">
         Vi smutter ud nu
       </h2>
       <div className="mt-3 flex items-baseline gap-3">
         <span className="text-xl font-semibold text-[#1A1A18]">
-          Nymindegab
+          {config.headline}
         </span>
-        <span className="text-sm text-[#8A8A82]">
-          Fjordudløb · kraftig strøm
-        </span>
-        <span className="ml-auto text-3xl font-light text-[#1A5A8A] tabular-nums">
-          9
+        <span className="text-sm text-[#8A8A82]">{config.subtitle}</span>
+        <span
+          className={`ml-auto text-3xl font-light tabular-nums ${scoreColor(score)}`}
+        >
+          {fishability ? score : '—'}
         </span>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
