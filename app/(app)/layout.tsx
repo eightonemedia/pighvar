@@ -11,7 +11,6 @@ type User = { id: string; name: string }
 
 const navItems = [
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/kort', label: 'Kort' },
   { href: '/tur', label: 'Tur-tracker' },
   { href: '/log', label: 'Fangstlog' },
   { href: '/saeson', label: 'Sæson & viden' },
